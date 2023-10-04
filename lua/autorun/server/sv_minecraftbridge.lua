@@ -1,7 +1,7 @@
 ---- Minecraft Bridge
 ---- Server autorun logic
 
-if game.SinglePlayer() or not string.StartWith(game.GetMap(), "mb_") then
+if game.SinglePlayer()--[[ or not string.StartWith(game.GetMap(), "mb_")--]] then
 
 	return
 end
@@ -14,14 +14,20 @@ local MinecraftSendEventList = {}
 
 local MinecraftBridgeIP = "26.221.65.181"
 local MinecraftBridgePort = "1820"
+local MinecraftPostGmodMapURL = ""
 local MinecraftPostGmodDataURL = ""
 local MinecraftPostGmodEntitiesURL = ""
 
 function UpdateMinecraftPostURL()
 
+	MinecraftPostGmodHandshake = "http://"..MinecraftBridgeIP..":"..MinecraftBridgePort.."/handshakeGmod"
+	MinecraftPostGmodMapURL = "http://"..MinecraftBridgeIP..":"..MinecraftBridgePort.."/postGmodMap"
 	MinecraftPostGmodDataURL = "http://"..MinecraftBridgeIP..":"..MinecraftBridgePort.."/postGmodData"
-
 	MinecraftPostGmodEntitiesURL = "http://"..MinecraftBridgeIP..":"..MinecraftBridgePort.."/postGmodEntities"
+end
+
+function GetMinecraftPostGmodMapURL()
+	return MinecraftPostGmodMapURL
 end
 
 UpdateMinecraftPostURL()
@@ -37,6 +43,14 @@ local MinecraftPlayerJumpPower = 200
 
 local MinecraftBlockSize = 64.0
 local MinecraftBlockSizeInv = 1.0 / MinecraftBlockSize
+
+function GetMinecraftBlockSize()
+	return MinecraftBlockSize
+end
+
+function GetMinecraftBlockSizeInv()
+	return MinecraftBlockSizeInv
+end
 
 local MinecraftBlockBias = Vector(MinecraftBlockSize, -MinecraftBlockSize, MinecraftBlockSize) * 0.5
 
@@ -128,6 +142,31 @@ local StaticEntityFilter = {
 	"func_button"
 }
 
+local MinecraftMaterialKeyWords = {
+	["concrete"] = 1,
+	["grass"] = 2,
+	["brick"] = 3
+}
+
+function GetMinecraftMaterialIndex(InTextureName)
+
+	local LastWordStart = 1
+	local LastWordIndex = 0
+
+	for SampleKeyWord, SampleIndex in pairs(MinecraftMaterialKeyWords) do
+
+		local Start, End = string.find(InTextureName, SampleKeyWord, LastWordStart)
+
+		if Start ~= nil then
+
+			LastWordStart = Start
+			LastWordIndex = SampleIndex
+		end
+	end
+
+	return LastWordIndex
+end
+
 function SetMinecraftBridgeIP(InIP)
 
 	MsgN("SetMinecraftBridgeIP()")
@@ -184,23 +223,88 @@ function ToggleMinecraftBridge(InTickRate)
 
 		bMinecraftBridgeEnabled = true
 
-		MinecraftInitStaticEntities()
-
 		hook.Add("SetupMove", "MinecraftUpdateMove", MinecraftUpdateMove_Implementation)
 
 		hook.Add("StartCommand", "MinecraftCommand", MinecraftCommand_Implementation)
 
 		timer.Create("MinecraftBridgePost", 1.0 / (InTickRate or 10.0), 0, MinecraftBridgePostTick)
 
+		MinecraftHandshake()
+
+		MinecraftInitStaticEntities()
+
+		MinecraftSendMapData()
+
 		for SampleIndex, SamplePlayer in ipairs(player.GetAll()) do
 
 			InitializeBridgePlayer(SamplePlayer)
-
 			SamplePlayer:Spawn()
 		end
 
 		PrintMessage(HUD_PRINTTALK, "Minecraft bridge enabled!")
 	end
+end
+
+local GlobalOffsetZ = 0.0
+
+function GetGlobalOffsetZ(InOffset)
+
+	return GlobalOffsetZ
+end
+
+function SetGlobalOffsetZ(InOffset)
+
+	MsgN(Format("SetGlobalOffsetZ: %i", InOffset))
+	
+	GlobalOffsetZ = InOffset
+end
+
+function MinecraftHandshake()
+
+	--MsgN(Format("GlobalOffsetZ: %i", GlobalOffsetZ))
+
+	local OutTable = { OffsetHeight = GlobalOffsetZ, Materials = MinecraftMaterialKeyWords }
+
+	local OutJSON = util.TableToJSON(OutTable)
+
+	--print(OutJSON)
+
+	local OutRequest = {
+		url			= MinecraftPostGmodHandshake,
+		method		= "post",
+		body		= OutJSON,
+		type		= "application/json",
+
+		--Parameters
+		--OutTable,
+
+		--Success Callback
+		success = OnMinecraftHandshakeSuccess,
+
+		--Failure Callback
+		failed = OnMinecraftHandshakeFailure--,
+
+		--Header
+		--[[{
+			["Content-Type"] = "application/json",
+			["Content-Length"] = tostring(MessageLength)
+		}--]]
+	}
+	HTTP(OutRequest)
+end
+
+local function OnMinecraftHandshakeSuccess(InCode, InBody, InHeaders)
+
+	MsgN(Format("OnMinecraftHandshakeSuccess() body: %s", InBody))
+
+
+end
+
+local function OnMinecraftHandshakeFailure(InError)
+
+	MsgN(Format("OnMinecraftHandshakeFailure() error: %s", InError))
+
+
 end
 
 hook.Add("PlayerInitialSpawn", "MinecraftPlayerInitialSpawn", function(InPlayer, bTransition)
@@ -225,7 +329,7 @@ function InitializeBridgePlayer(InPlayer)
 	end
 end
 
-hook.Add("PlayerSpawn", "MinecraftPlayerSpawn", function(InPlayer, bTransition)
+hook.Add("PlayerSpawn", "MinecraftPlayerSpawn", function(InPlayer, bInTransition)
 
 	--MsgN("PlayerSpawn()")
 
@@ -257,6 +361,8 @@ hook.Add("PlayerSpawn", "MinecraftPlayerSpawn", function(InPlayer, bTransition)
 				InPlayer:SetModelScale(1.0)
 			end
 		end)
+	else
+		SetGlobalOffsetZ(math.Round(InPlayer:GetPos().Z * GetMinecraftBlockSizeInv()) * GetMinecraftBlockSize())
 	end
 end)
 
@@ -769,6 +875,8 @@ function OnMinecraftPostFailure(InError)
 
 	--MsgN(Format("OnMinecraftPostFailure() error: %s", InError))
 
+	PrintMessage(HUD_PRINTTALK, "Minecraft bridge error: "..InError)
+
 	if bMinecraftBridgeEnabled then
 
 		ToggleMinecraftBridge()
@@ -933,7 +1041,6 @@ hook.Add("EntityRemoved", "MinecraftEntityRemoved", function(InEntity)
 		if MinecraftExplosiveClassList[InEntity:GetClass()] then
 			
 			HandleMinecraftEntityExplosionEvent(InEntity)
-
 			return
 		end
 	end
@@ -1031,7 +1138,7 @@ function MinecraftInitStaticEntities()
 
 	local OutJSON = util.TableToJSON(OutTable)
 
-	print(OutJSON)
+	--print(OutJSON)
 
 	local OutRequest = {
 		url			= MinecraftPostGmodEntitiesURL,
@@ -1181,7 +1288,7 @@ hook.Add("PlayerSay", "MinecraftChatEvent", function(InPlayer, InText, bTeamChat
 
 			return ""
 
-		elseif CommandData[1] == "/mbtoggle" then
+		elseif CommandData[1] == "/mb" then
 
 			ToggleMinecraftBridge(tonumber(CommandData[2]))
 
