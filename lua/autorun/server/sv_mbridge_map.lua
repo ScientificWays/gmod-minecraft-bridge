@@ -13,11 +13,11 @@ function InitializeMapBuildOffsetZ(InPlayer)
 	MsgN(Format("MapBuildOffsetZ: %i", MapBuildOffsetZ))
 end
 
-local MapChunksX = 1
-local MapChunksY = 1
+local MapChunksX = 20
+local MapChunksY = 20
 
-local MapChunkSize = 4
-local MapChunkSizeZ = 16
+local MapChunkSize = 16
+local MapChunkSizeZ = 64
 
 --[[timer.Create("HUDHintDataTick", 0.2, 0, function()
 
@@ -57,9 +57,9 @@ function MinecraftSendMapData()
 
 	local ChunkID = 0
 
-	for x = -MapChunksX, MapChunksX do
+	for x = -MapChunksX * 0.5, MapChunksX * 0.5 do
 
-		for y = -MapChunksY, MapChunksY do
+		for y = -MapChunksY * 0.5, MapChunksY * 0.5 do
 
 			MinecraftMapSendChunk(ChunkID, x, y)
 			ChunkID = ChunkID + 1
@@ -73,49 +73,13 @@ function MinecraftMapSendChunk(InID, InOffsetX, InOffsetY)
 	local OutTable = { ID = InID, points = {} }
 	local OccludedCoords = {}
 
-	local BlockCenterOffset = Vector(0.5, -0.5, 0.5) * GetMinecraftBlockSize()
-
-	local BoundsStart = { x = -MapChunkSize + InOffsetX * MapChunkSize, y = -MapChunkSize + InOffsetY * MapChunkSize, z = -MapChunkSizeZ * 0.5 + MapBuildOffsetZ }
-	local BoundsEnd = { x = MapChunkSize + InOffsetX * MapChunkSize, y = MapChunkSize + InOffsetY * MapChunkSize, z = MapChunkSizeZ * 1.5 + MapBuildOffsetZ}
+	local BoundsStart = { x = -MapChunkSize + InOffsetX * MapChunkSize, y = -MapChunkSize + InOffsetY * MapChunkSize, z = -MapChunkSizeZ * 0.25 + MapBuildOffsetZ }
+	local BoundsEnd = { x = MapChunkSize + InOffsetX * MapChunkSize, y = MapChunkSize + InOffsetY * MapChunkSize, z = MapChunkSizeZ * 1.75 + MapBuildOffsetZ}
 
 	for x = BoundsStart.x, BoundsEnd.x do
 		for y = BoundsStart.y, BoundsEnd.y do
 			for z = BoundsStart.z, BoundsEnd.z do
-				local TraceLocation = Vector(x, y, z) * GetMinecraftBlockSize() + BlockCenterOffset
-
-				local TraceResult = util.TraceLine({
-					start = TraceLocation + Vector(0.0, 0.55, 0.55) * GetMinecraftBlockSize(),
-					endpos = TraceLocation,
-					mask = CONTENTS_SOLID})
-
-				if TraceResult.HitTexture == "**empty**" then
-					TraceResult = util.TraceLine({
-					start = TraceLocation - Vector(0.0, 0.55, 0.55) * GetMinecraftBlockSize(),
-					endpos = TraceLocation,
-					mask = CONTENTS_SOLID})
-				end
-				--MsgN(Format("HitWorld: %s", TraceResult.HitWorld))
-
-				if TraceResult.HitWorld and TraceResult.MatType ~= MAT_DEFAULT then
-
-					--debugoverlay.Box(TraceLocation, Vector(1,1,1) * -16, Vector(1,1,1) * 16, 100)
-
-					if OccludedCoords[x] == nil then
-						OccludedCoords[x] = {}
-					end
-
-					if OccludedCoords[x][y] == nil then
-						OccludedCoords[x][y] = {}
-					end
-					OccludedCoords[x][y][z] = GetMinecraftMaterialIndex(TraceResult.HitTexture)
-					--MsgN(Format("Index: %s", OccludedCoords[x][y][z]))
-					--PrintTable(TraceResult)
-					--MsgN(Format("HitTexture: %s", TraceResult.HitTexture))
-
-					if OccludedCoords[x][y][z] > 0 then
-						--debugoverlay.Box(TraceLocation, Vector(1,1,1) * -16, Vector(1,1,1) * 16, 100)
-					end
-				end
+				MinecraftMapTraceOnCoords(OccludedCoords, x, y, z)
 			end
 		end
 	end
@@ -142,10 +106,15 @@ function MinecraftMapSendChunk(InID, InOffsetX, InOffsetY)
 						table.insert(OutTable.points, BlockLocation.Z)
 						table.insert(OutTable.points, -BlockLocation.Y)
 						table.insert(OutTable.points, OccludedCoords[x][y][z])
+						--MsgN(Format("Material: %i", OccludedCoords[x][y][z]))
 					end
 				end
 			end
 		end
+	end
+
+	if table.IsEmpty(OutTable) then
+		return
 	end
 
 	local OutJSON = util.TableToJSON(OutTable)
@@ -170,16 +139,67 @@ function MinecraftMapSendChunk(InID, InOffsetX, InOffsetY)
 	HTTP(OutRequest)
 end
 
-local function OnMinecraftInitMapSuccess(InCode, InBody, InHeaders)
+function OnMinecraftInitMapSuccess(InCode, InBody, InHeaders)
 
 	MsgN(Format("OnMinecraftInitMapSuccess() body: %s", InBody))
 
 
 end
 
-local function OnMinecraftInitMapFailure(InError)
+function OnMinecraftInitMapFailure(InError)
 
 	MsgN(Format("OnMinecraftInitMapFailure() error: %s", InError))
 
 
+end
+
+function TestMinecraftMapTraceFromView()
+
+	local PlayerTrace = util.TraceLine(util.GetPlayerTrace(player.GetAll()[1]))
+	local Coords = PlayerTrace.HitPos * GetMinecraftBlockSizeInv()
+	MsgN(Format("Coords: %i, %i, %i", math.Round(Coords.X), math.Round(Coords.Y), math.Round(Coords.Z)))
+	MinecraftMapTraceOnCoords({}, math.Round(Coords.X), math.Round(Coords.Y), math.Round(Coords.Z))
+end
+
+function MinecraftMapTraceOnCoords(coords, x, y, z)
+
+	local TraceLocation = Vector(x, y, z) * GetMinecraftBlockSize() + GetMinecraftBlockCenterOffset()
+	local TraceStart = TraceLocation + Vector(0.0, 0.55, 0.55) * GetMinecraftBlockSize()
+
+	local TraceResult = util.TraceLine({
+		start = TraceStart,
+		endpos = TraceLocation,
+		mask = CONTENTS_SOLID})
+
+	if TraceResult.HitTexture == "**empty**" then
+		TraceStart = TraceLocation - Vector(0.0, 0.55, 0.55) * GetMinecraftBlockSize()
+		TraceResult = util.TraceLine({
+		start = TraceStart,
+		endpos = TraceLocation,
+		mask = CONTENTS_SOLID})
+	end
+	--debugoverlay.Box(TraceLocation, Vector(1,1,1) * -32, Vector(1,1,1) * 32, 10)
+
+	--PrintTable(TraceResult)
+	--MsgN("==============")
+
+	if TraceResult.Fraction < 1 and TraceResult.HitWorld and TraceResult.MatType ~= MAT_DEFAULT then
+
+		debugoverlay.Box(TraceLocation, Vector(0.5, 0.5, 0.5) * -GetMinecraftBlockSize(), Vector(0.5, 0.5, 0.5) * GetMinecraftBlockSize(), 1000)
+
+		if coords[x] == nil then
+			coords[x] = {}
+		end
+
+		if coords[x][y] == nil then
+			coords[x][y] = {}
+		end
+		coords[x][y][z] = GetMinecraftMaterialIndex(TraceResult.HitTexture)
+		--MsgN(Format("Index: %s", coords[x][y][z]))
+		--MsgN(Format("HitTexture: %s", TraceResult.HitTexture))
+
+		if coords[x][y][z] > 0 then
+			--debugoverlay.Box(TraceLocation, Vector(1,1,1) * -16, Vector(1,1,1) * 16, 100)
+		end
+	end
 end

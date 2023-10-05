@@ -41,18 +41,34 @@ local MinecraftPlayerViewOffsetDuck = Vector(0.0, 0.0, 28.0)
 local MinecraftPlayerModelScale = 1.0
 local MinecraftPlayerJumpPower = 200
 
-local MinecraftBlockSize = 64.0
-local MinecraftBlockSizeInv = 1.0 / MinecraftBlockSize
+local MinecraftBlockSize = 0.0
+local MinecraftBlockSizeInv = 0.0
+
+local MinecraftBlockCenterOffset = 0.0
+
+local MinecraftBlockBias = 0.0
 
 function GetMinecraftBlockSize()
 	return MinecraftBlockSize
 end
 
+function SetMinecraftBlockSize(InValue)
+	MsgN(Format("SetMinecraftBlockSize: %i", MinecraftBlockSize))
+	MinecraftBlockSize = InValue
+	MinecraftBlockSizeInv = 1.0 / MinecraftBlockSize
+	MinecraftBlockCenterOffset = Vector(0.5, -0.5, 0.5) * MinecraftBlockSize
+	MinecraftBlockBias = Vector(MinecraftBlockSize, -MinecraftBlockSize, MinecraftBlockSize) * 0.5
+end
+
+SetMinecraftBlockSize(64.0)
+
 function GetMinecraftBlockSizeInv()
 	return MinecraftBlockSizeInv
 end
 
-local MinecraftBlockBias = Vector(MinecraftBlockSize, -MinecraftBlockSize, MinecraftBlockSize) * 0.5
+function GetMinecraftBlockCenterOffset()
+	return MinecraftBlockCenterOffset
+end
 
 local MinecraftBlockColorList = {
 	["minecraft:stone"] = Color(128, 128, 128),
@@ -145,17 +161,28 @@ local StaticEntityFilter = {
 local MinecraftMaterialKeyWords = {
 	["concrete"] = 1,
 	["grass"] = 2,
-	["brick"] = 3
+	["brick"] = 3,
+	["plaster"] = 4,
+	["building"] = 5,
+	["roof"] = 6,
+	["wood"] = 7,
+	["cliff"] = 8,
+	["stone"] = 9,
 }
 
 function GetMinecraftMaterialIndex(InTextureName)
+
+	if InTextureName == "**displacement**" then
+		return MinecraftMaterialKeyWords["grass"]
+	end
+	local LowercaseName = string.lower(InTextureName)
 
 	local LastWordStart = 1
 	local LastWordIndex = 0
 
 	for SampleKeyWord, SampleIndex in pairs(MinecraftMaterialKeyWords) do
 
-		local Start, End = string.find(InTextureName, SampleKeyWord, LastWordStart)
+		local Start, End = string.find(LowercaseName, SampleKeyWord, LastWordStart)
 
 		if Start ~= nil then
 
@@ -221,27 +248,7 @@ function ToggleMinecraftBridge(InTickRate)
 
 		--MsgN(InTickRate)
 
-		bMinecraftBridgeEnabled = true
-
-		hook.Add("SetupMove", "MinecraftUpdateMove", MinecraftUpdateMove_Implementation)
-
-		hook.Add("StartCommand", "MinecraftCommand", MinecraftCommand_Implementation)
-
-		timer.Create("MinecraftBridgePost", 1.0 / (InTickRate or 10.0), 0, MinecraftBridgePostTick)
-
 		MinecraftHandshake()
-
-		MinecraftInitStaticEntities()
-
-		MinecraftSendMapData()
-
-		for SampleIndex, SamplePlayer in ipairs(player.GetAll()) do
-
-			InitializeBridgePlayer(SamplePlayer)
-			SamplePlayer:Spawn()
-		end
-
-		PrintMessage(HUD_PRINTTALK, "Minecraft bridge enabled!")
 	end
 end
 
@@ -293,14 +300,36 @@ function MinecraftHandshake()
 	HTTP(OutRequest)
 end
 
-local function OnMinecraftHandshakeSuccess(InCode, InBody, InHeaders)
+function OnMinecraftHandshakeSuccess(InCode, InBody, InHeaders)
 
 	MsgN(Format("OnMinecraftHandshakeSuccess() body: %s", InBody))
 
+	local SampleTable = util.JSONToTable(InBody) or {}
 
+	if SampleTable.GmodUnitsPerBlock ~= nil and isnumber(SampleTable.GmodUnitsPerBlock) then
+		SetMinecraftBlockSize(SampleTable.GmodUnitsPerBlock)
+	end
+
+	MinecraftInitStaticEntities()
+	MinecraftSendMapData()
+
+	bMinecraftBridgeEnabled = true
+
+	for SampleIndex, SamplePlayer in ipairs(player.GetAll()) do
+
+		InitializeBridgePlayer(SamplePlayer)
+		SamplePlayer:Spawn()
+	end
+
+	hook.Add("SetupMove", "MinecraftUpdateMove", MinecraftUpdateMove_Implementation)
+	hook.Add("StartCommand", "MinecraftCommand", MinecraftCommand_Implementation)
+
+	timer.Create("MinecraftBridgePost", 1.0 / (InTickRate or 10.0), 0, MinecraftBridgePostTick)
+
+	PrintMessage(HUD_PRINTTALK, "Minecraft bridge enabled!")
 end
 
-local function OnMinecraftHandshakeFailure(InError)
+function OnMinecraftHandshakeFailure(InError)
 
 	MsgN(Format("OnMinecraftHandshakeFailure() error: %s", InError))
 
@@ -385,7 +414,7 @@ hook.Add("PlayerLoadout", "MinecraftPlayerLoadout", function(InPlayer)
 
 			local SampleWeapon = InPlayer:Give(SampleWeaponClass)
 
-			MsgN(SampleWeapon:GetPrimaryAmmoType())
+			--MsgN(SampleWeapon:GetPrimaryAmmoType())
 
 			InPlayer:SetAmmo(9999, SampleWeapon:GetPrimaryAmmoType())
 		end
@@ -519,7 +548,7 @@ function UpdateMinecraftEntity(InEntityData)
 
 		if InEntityData.bFlashlight ~= MinecraftEntity:FlashlightIsOn() then
 
-			MsgN(InEntityData.bFlashlight)
+			--MsgN(InEntityData.bFlashlight)
 
 			MinecraftEntity:Flashlight(InEntityData.bFlashlight)
 		end
@@ -788,7 +817,6 @@ function OnMinecraftPostSuccess(InCode, InBody, InHeaders)
 	end
 
 	--PrintTable(UUIDEntityList)
-
 	--PrintTable(ValidUUIDTable)
 
 	for SampleUUID, SampleEntity in pairs(UUIDEntityList) do
@@ -820,7 +848,7 @@ function OnMinecraftPostSuccess(InCode, InBody, InHeaders)
 
 			local TargetEntity = UUIDEntityList[SampleEventData.targetUuid]
 
-			PrintTable(SampleEventData)
+			--PrintTable(SampleEventData)
 
 			--local AttackerEntity = UUIDEntityList[SampleEventData.AttackerUUID]
 
@@ -1164,14 +1192,14 @@ function MinecraftInitStaticEntities()
 	HTTP(OutRequest)
 end
 
-local function OnMinecraftInitStaticEntitiesSuccess(InCode, InBody, InHeaders)
+function OnMinecraftInitStaticEntitiesSuccess(InCode, InBody, InHeaders)
 
 	MsgN(Format("OnMinecraftInitStaticEntitiesSuccess() body: %s", InBody))
 
 
 end
 
-local function OnMinecraftInitStaticEntitiesFailure(InError)
+function OnMinecraftInitStaticEntitiesFailure(InError)
 
 	MsgN(Format("OnMinecraftInitStaticEntitiesFailure() error: %s", InError))
 
