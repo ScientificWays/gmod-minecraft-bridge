@@ -72,16 +72,32 @@ end
 
 function MinecraftInitMapChunkBounds()
 
+	local MapChunkBoundsSizeScaled = 8
+
+	if GetMinecraftBlockSize() < 32 then
+		MapChunkBoundsFactorScaled = 32
+	elseif GetMinecraftBlockSize() < 64 then
+		MapChunkBoundsFactorScaled = 16
+	end
+
+	local MapChunkBoundsSizeDownScaled = 8
+
+	if GetMinecraftBlockSize() > 64 then
+		MapChunkBoundsSizeDownScaled = 2
+	end
+
 	local MapBoundsMin, MapBoundsMax = game.GetWorld():GetModelBounds()
 	local MapBoundsToChunksMul = GetMinecraftBlockSizeInv() / MapChunkSize
 
-	MapChunkBoundsMin.X = math.max(math.floor(MapBoundsMin.X * MapBoundsToChunksMul), -8)
-	MapChunkBoundsMin.Y = math.max(math.floor(MapBoundsMin.Y * MapBoundsToChunksMul), -8)
-	MapChunkBoundsMin.Z = math.max(math.floor((MapBoundsMin.Z - GetGlobalOffsetZ()) * MapBoundsToChunksMul), -4)
+	local ChunksGlobalOffsetZ = math.floor(GetGlobalOffsetZ() * GetMinecraftBlockSizeInv() / MapChunkSize)
 
-	MapChunkBoundsMax.X = math.min(math.floor(MapBoundsMax.X * MapBoundsToChunksMul), 8)
-	MapChunkBoundsMax.Y = math.min(math.floor(MapBoundsMax.Y * MapBoundsToChunksMul), 8)
-	MapChunkBoundsMax.Z = math.min(math.floor((MapBoundsMax.Z - GetGlobalOffsetZ()) * MapBoundsToChunksMul), 8)
+	MapChunkBoundsMin.X = math.max(math.floor(MapBoundsMin.X * MapBoundsToChunksMul), -MapChunkBoundsSizeScaled)
+	MapChunkBoundsMin.Y = math.max(math.floor(MapBoundsMin.Y * MapBoundsToChunksMul), -MapChunkBoundsSizeScaled)
+	MapChunkBoundsMin.Z = math.max(math.floor((MapBoundsMin.Z + GetGlobalOffsetZ()) * MapBoundsToChunksMul), -MapChunkBoundsSizeDownScaled + ChunksGlobalOffsetZ)
+
+	MapChunkBoundsMax.X = math.min(math.floor(MapBoundsMax.X * MapBoundsToChunksMul), MapChunkBoundsSizeScaled)
+	MapChunkBoundsMax.Y = math.min(math.floor(MapBoundsMax.Y * MapBoundsToChunksMul), MapChunkBoundsSizeScaled)
+	MapChunkBoundsMax.Z = math.min(math.floor((MapBoundsMax.Z + GetGlobalOffsetZ()) * MapBoundsToChunksMul), MapChunkBoundsSizeScaled + ChunksGlobalOffsetZ)
 
 	MsgN(Format("MinecraftInitChunkBounds() Ready: MapChunksMin = [%s], MapChunksMax = [%s]", MapChunkBoundsMin, MapChunkBoundsMax))
 end
@@ -157,7 +173,7 @@ function MinecraftInitAndStartMapScan()
 			for x = MapChunkBoundsMin.X, MapChunkBoundsMax.X do
 				for y = MapChunkBoundsMin.Y, MapChunkBoundsMax.Y do
 
-					MinecraftMapScanChunk(ChunkID, x, y, z)
+					MinecraftMapScanChunk(ChunkID--[[math.floor(SysTime() * 1000.0)]], x, y, z)
 					--PrintTable(MinecraftChunkToSend_InProgress)
 					if not table.IsEmpty(MinecraftChunkToSend_InProgress.points) then
 						table.CopyFromTo(MinecraftChunkToSend_InProgress, MinecraftChunkToSend)
@@ -182,13 +198,16 @@ end
 
 function MinecraftMapScanChunk(InID, InOffsetX, InOffsetY, InOffsetZ)
 
-	--MsgN(Format("MinecraftMapScanChunk() %s, [%s, %s, %s]", InID, InOffsetX, InOffsetY, InOffsetZ))
+	MsgN(Format("MinecraftMapScanChunk() %s, [%s, %s, %s]", InID, InOffsetX, InOffsetY, InOffsetZ))
 	MinecraftChunkToSend_InProgress = { ID = InID, points = {} }
 	local OccludedCoords = {}
 	local BoundsStart = Vector(-MapChunkSize + InOffsetX * MapChunkSize, -MapChunkSize + InOffsetY * MapChunkSize, -MapChunkSize + InOffsetZ * MapChunkSize)
 	local BoundsEnd = Vector(MapChunkSize + InOffsetX * MapChunkSize, MapChunkSize + InOffsetY * MapChunkSize, MapChunkSize + InOffsetZ * MapChunkSize)
+
 	--MsgN(BoundsStart, BoundsEnd)
-	--[[if MinecraftMapScanChunkEarlyOutCheck(BoundsStart, BoundsEnd) then --Seems to not work because there's no overlap until we leave solid area
+
+	--Seems to not work because there's no overlap until we leave solid area
+	--[[if MinecraftMapScanChunkEarlyOutCheck(BoundsStart, BoundsEnd) then
 		return
 	end--]]
 
@@ -294,7 +313,7 @@ function MinecraftMapTraceOnCoords(InTable, x, y, z)
 		--MsgN(Format("HitTexture: %s", TraceResult.HitTexture))
 
 		if InTable[x][y][z] > 0 then
-			debugoverlay.Box(TraceEnd, Vector(0.5, 0.5, 0.5) * -GetMinecraftBlockSize(), Vector(0.5, 0.5, 0.5) * GetMinecraftBlockSize(), 15.0)
+			--debugoverlay.Box(TraceEnd, Vector(0.5, 0.5, 0.5) * -GetMinecraftBlockSize(), Vector(0.5, 0.5, 0.5) * GetMinecraftBlockSize(), 15.0)
 		end
 	end
 end

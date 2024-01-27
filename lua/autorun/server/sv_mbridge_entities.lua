@@ -387,7 +387,7 @@ function MinecraftUpdateEntity(InEntityData)
 
 		local WeaponClass = MinecraftTryGetWeaponForHand(InEntityData.hand)
 
-		if MinecraftTryGetBlockColor(InEntityData.hand) ~= nil then --If players holds valid block
+		if MinecraftTryGetBlockColorByID(InEntityData.hand) ~= nil then --If players holds valid block
 			WeaponClass = "weapon_crowbar"
 		end
 

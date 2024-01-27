@@ -237,15 +237,18 @@ hook.Add("PlayerSay", "MinecraftChatEvent", function(InPlayer, InText, bTeamChat
 
 		--PrintTable(CommandData)
 
-		if CommandData[1] == "/mbip" then
-			MinecraftSetBridgeIP(CommandData[2])
-			return ""
-		elseif CommandData[1] == "/mbport" then
-			MinecraftSetBridgePort(CommandData[2])
-			return ""
-		elseif CommandData[1] == "/mb" then
-			MinecraftToggleBridge(CommandData[2])
-			return ""
+		if CommandData[1] == "/bridge" or CommandData[1] == "/mb" then
+
+			if CommandData[2] == "toggle" then
+				MinecraftToggleBridge(CommandData[3], CommandData[4])
+				return ""
+			elseif CommandData[1] == "ip" then
+				MinecraftSetBridgeIP(CommandData[3])
+				return ""
+			elseif CommandData[1] == "port" then
+				MinecraftSetBridgePort(CommandData[3])
+				return ""
+			end
 		end
 		return
 	end
