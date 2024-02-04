@@ -33,6 +33,8 @@ local MinecraftPostUpdate = ""
 local MinecraftBridgeToken = ""
 local MinecraftBridgeMaxTPS = ""
 
+local bMinecraftUpdateScanHandled = false
+
 function MinecraftGetMinecraftRoomCode()
 	return MinecraftRoomCode
 end
@@ -157,7 +159,6 @@ function MinecraftOnHandshakeSuccess(InCode, InBody, InHeaders)
 	--MinecraftInitStaticEntities()
 
 	bMinecraftShouldScanMap = (SampleSettings.forcedGenerateMap == 1)
-
 	MinecraftSetBridgeEnabled(true)
 
 	for SampleIndex, SamplePlayer in ipairs(player.GetAll()) do
@@ -169,6 +170,7 @@ function MinecraftOnHandshakeSuccess(InCode, InBody, InHeaders)
 	hook.Add("StartCommand", "MinecraftCommand", MinecraftCommand_Implementation)
 
 	MinecraftBridgeMaxTPS = tonumber(SampleTable.maxTPS) or 10.0
+	bMinecraftUpdateScanHandled = true
 	timer.Create("MinecraftUpdate", 1.0 / MinecraftBridgeMaxTPS, 0, MinecraftUpdate)
 
 	PrintMessage(HUD_PRINTTALK, "Minecraft bridge enabled!")
@@ -192,10 +194,23 @@ end
 
 function MinecraftUpdate()
 
+	--MsgN("Request MinecraftUpdate()")
+
+	if MinecraftIsMapScanInProgress() then
+		if bMinecraftUpdateScanHandled then
+			bMinecraftUpdateScanHandled = false
+		else
+			return
+		end
+	end
+
+	--MsgN("MinecraftUpdate()")
 	local OutTable = MinecraftBuildEntityUpdateTable()
 
 	if MinecraftHasChunkToSend() then
-		OutTable.chunk = MinecraftGetChunkToSend()
+		OutTable.chunk = MinecraftConsumeMinecraftChunkToSend()
+		--MsgN(OutTable.chunk.ID)
+		--MsgN(OutTable.chunk.f)
 	end
 
 	OutTable.token = MinecraftBridgeToken
@@ -219,6 +234,7 @@ local bSlowerUpdates = false
 function MinecraftOnUpdateSuccess(InCode, InBody, InHeaders)
 
 	--MsgN(Format("MinecraftOnUpdateSuccess() body: %s", InBody))
+	--MsgN("MinecraftOnUpdateSuccess()")
 
 	local SampleTable = util.JSONToTable(InBody) or {}
 
@@ -239,8 +255,12 @@ function MinecraftOnUpdateSuccess(InCode, InBody, InHeaders)
 
 	MinecraftReceiveEntityUpdateData(SampleTable.data)
 
-	if MinecraftIsMapScanInProgress() then
-		MinecraftStartScanNextChunk()
+	if MinecraftIsMapScanInProgress() then		
+		bMinecraftUpdateScanHandled = true
+
+		if MinecraftIsReadyToScanNextChunk() then
+			MinecraftStartScanNextChunk()
+		end
 	end
 end
 

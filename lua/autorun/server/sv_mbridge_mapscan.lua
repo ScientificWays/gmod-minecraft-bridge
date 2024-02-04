@@ -49,7 +49,7 @@ end
 local MapChunkBoundsMin = Vector(-4, -4, -2)
 local MapChunkBoundsMax = Vector(4, 4, 4)
 
-local MapChunkSize = 8
+local MapChunkHalfSize = 16
 
 local MapChunkSizeUnitsMin = Vector(-1.0, -1.0, -1.0)
 local MapChunkSizeUnitsMax = Vector(1.0, 1.0, 1.0)
@@ -63,7 +63,7 @@ end
 --timer.Create("TraceStartOffsetff", 1.0, 0, function() MsgN(TraceStartOffset) end)
 
 function MinecraftUpdateMapScanData()
-	local Size = MapChunkSize * GetMinecraftBlockSize()
+	local Size = MapChunkHalfSize * GetMinecraftBlockSize()
 	MapChunkSizeUnitsMin = -Vector(Size, Size, Size)
 	MapChunkSizeUnitsMax = Vector(Size, Size, Size)
 	TraceStartOffset = Vector(0.0, 0.55, 0.55) * GetMinecraftBlockSize()
@@ -72,32 +72,32 @@ end
 
 function MinecraftInitMapChunkBounds()
 
-	local MapChunkBoundsSizeScaled = 8
+	local MapChunkBoundsSizeScaled = math.max(math.floor(64 / MapChunkHalfSize), 2)
 
 	if GetMinecraftBlockSize() < 32 then
-		MapChunkBoundsFactorScaled = 32
+		MapChunkBoundsFactorScaled = MapChunkBoundsFactorScaled * 4
 	elseif GetMinecraftBlockSize() < 64 then
-		MapChunkBoundsFactorScaled = 16
+		MapChunkBoundsFactorScaled = MapChunkBoundsFactorScaled * 2
 	end
 
-	local MapChunkBoundsSizeDownScaled = 8
+	local MapChunkBoundsSizeDownScaled = math.max(math.floor(64 / MapChunkHalfSize), 1)
 
 	if GetMinecraftBlockSize() > 64 then
 		MapChunkBoundsSizeDownScaled = 2
 	end
 
 	local MapBoundsMin, MapBoundsMax = game.GetWorld():GetModelBounds()
-	local MapBoundsToChunksMul = GetMinecraftBlockSizeInv() / MapChunkSize
+	local UnitsToChunksMul = GetMinecraftBlockSizeInv() / (MapChunkHalfSize * 2)
 
-	local ChunksGlobalOffsetZ = math.floor(GetGlobalOffsetZ() * GetMinecraftBlockSizeInv() / MapChunkSize)
+	local ChunksGlobalOffsetZ = math.floor(GetGlobalOffsetZ() * UnitsToChunksMul)
 
-	MapChunkBoundsMin.X = math.max(math.floor(MapBoundsMin.X * MapBoundsToChunksMul), -MapChunkBoundsSizeScaled)
-	MapChunkBoundsMin.Y = math.max(math.floor(MapBoundsMin.Y * MapBoundsToChunksMul), -MapChunkBoundsSizeScaled)
-	MapChunkBoundsMin.Z = math.max(math.floor((MapBoundsMin.Z + GetGlobalOffsetZ()) * MapBoundsToChunksMul), -MapChunkBoundsSizeDownScaled + ChunksGlobalOffsetZ)
+	MapChunkBoundsMin.X = math.max(math.floor(MapBoundsMin.X * UnitsToChunksMul), -MapChunkBoundsSizeScaled)
+	MapChunkBoundsMin.Y = math.max(math.floor(MapBoundsMin.Y * UnitsToChunksMul), -MapChunkBoundsSizeScaled)
+	MapChunkBoundsMin.Z = math.max(math.floor((MapBoundsMin.Z + GetGlobalOffsetZ()) * UnitsToChunksMul), -MapChunkBoundsSizeDownScaled + ChunksGlobalOffsetZ)
 
-	MapChunkBoundsMax.X = math.min(math.floor(MapBoundsMax.X * MapBoundsToChunksMul), MapChunkBoundsSizeScaled)
-	MapChunkBoundsMax.Y = math.min(math.floor(MapBoundsMax.Y * MapBoundsToChunksMul), MapChunkBoundsSizeScaled)
-	MapChunkBoundsMax.Z = math.min(math.floor((MapBoundsMax.Z + GetGlobalOffsetZ()) * MapBoundsToChunksMul), MapChunkBoundsSizeScaled + ChunksGlobalOffsetZ)
+	MapChunkBoundsMax.X = math.min(math.floor(MapBoundsMax.X * UnitsToChunksMul), MapChunkBoundsSizeScaled)
+	MapChunkBoundsMax.Y = math.min(math.floor(MapBoundsMax.Y * UnitsToChunksMul), MapChunkBoundsSizeScaled)
+	MapChunkBoundsMax.Z = math.min(math.floor((MapBoundsMax.Z + GetGlobalOffsetZ()) * UnitsToChunksMul), MapChunkBoundsSizeScaled + ChunksGlobalOffsetZ)
 
 	MsgN(Format("MinecraftInitChunkBounds() Ready: MapChunksMin = [%s], MapChunksMax = [%s]", MapChunkBoundsMin, MapChunkBoundsMax))
 end
@@ -121,12 +121,18 @@ end
 local MinecraftChunkToSend = {}
 local MinecraftChunkToSend_InProgress = {}
 
+function MinecraftIsReadyToScanNextChunk()
+	return table.IsEmpty(MinecraftChunkToSend_InProgress) and table.IsEmpty(MinecraftChunkToSend)
+end
+
 function MinecraftHasChunkToSend()
 	return not table.IsEmpty(MinecraftChunkToSend)
 end
 
-function MinecraftGetChunkToSend()
-	return MinecraftChunkToSend
+function MinecraftConsumeMinecraftChunkToSend()
+	local OutTable = MinecraftChunkToSend
+	MinecraftChunkToSend = {}
+	return OutTable
 end
 
 local MinecraftChunkSendCoroutine = nil
@@ -138,13 +144,13 @@ end
 function MinecraftTestInitAndStartMapScan()
 
 	MinecraftInitAndStartMapScan()
-	timer.Create("TestMapScan", 1.0 / 20.0, 0, MinecraftTestStartScanNextChunk)
+	timer.Create("MinecraftTestMapScan", 1.0 / 20.0, 0, MinecraftTestStartScanNextChunk)
 end
 
 function MinecraftTestStartScanNextChunk()
 
 	if MinecraftChunkSendCoroutine == nil then
-		timer.Remove("TestMapScan")
+		timer.Remove("MinecraftTestMapScan")
 	else
 		MinecraftStartScanNextChunk()
 	end
@@ -152,12 +158,20 @@ end
 
 function MinecraftStartScanNextChunk()
 
-	table.Empty(MinecraftChunkToSend)
+	MinecraftMapScanChunkResume()
+end
+
+function MinecraftMapScanChunkResume()
+
 	local bSuccess, Message = coroutine.resume(MinecraftChunkSendCoroutine)
 
 	if not bSuccess then
 		MsgN(Message)
 	end
+
+	--[[if MinecraftChunkSendCoroutine then 
+		coroutine.resume(MinecraftChunkSendCoroutine)
+	end--]]
 end
 
 function MinecraftInitAndStartMapScan()
@@ -167,6 +181,7 @@ function MinecraftInitAndStartMapScan()
 	MinecraftChunkSendCoroutine = coroutine.create(function()
 
 		bMinecraftMapScanInProgress = true
+		local MaxChunks = (MapChunkBoundsMax.Z - MapChunkBoundsMin.Z) * (MapChunkBoundsMax.Y - MapChunkBoundsMin.Y) * (MapChunkBoundsMax.X - MapChunkBoundsMin.X)
 		local ChunkID = 0
 
 		for z = MapChunkBoundsMin.Z, MapChunkBoundsMax.Z do
@@ -176,15 +191,18 @@ function MinecraftInitAndStartMapScan()
 					MinecraftMapScanChunk(ChunkID--[[math.floor(SysTime() * 1000.0)]], x, y, z)
 					--PrintTable(MinecraftChunkToSend_InProgress)
 					if not table.IsEmpty(MinecraftChunkToSend_InProgress.points) then
+						MinecraftChunkToSend_InProgress.f = math.Round((ChunkID + 1) / MaxChunks, 2)
+						--MsgN(MinecraftChunkToSend_InProgress.f)
 						table.CopyFromTo(MinecraftChunkToSend_InProgress, MinecraftChunkToSend)
 					end
+					--MsgN("Scan finished")
 					table.Empty(MinecraftChunkToSend_InProgress)
 					--PrintTable(MinecraftChunkToSend)
 					ChunkID = ChunkID + 1
 	            	coroutine.yield()
 				end
 			end
-			PrintMessage(HUD_PRINTTALK, Format("Map scan progress: %i%%", (z - MapChunkBoundsMin.Z + 1) / (MapChunkBoundsMax.Z - MapChunkBoundsMin.Z + 1) * 100))
+			PrintMessage(HUD_PRINTTALK, Format("Map scan progress: %i%%", (z - MapChunkBoundsMin.Z + 1) / (MapChunkBoundsMax.Z - MapChunkBoundsMin.Z + 1) * 100.0))
 		end
 
 		MinecraftChunkSendCoroutine = nil
@@ -198,11 +216,11 @@ end
 
 function MinecraftMapScanChunk(InID, InOffsetX, InOffsetY, InOffsetZ)
 
-	MsgN(Format("MinecraftMapScanChunk() %s, [%s, %s, %s]", InID, InOffsetX, InOffsetY, InOffsetZ))
-	MinecraftChunkToSend_InProgress = { ID = InID, points = {} }
+	--MsgN(Format("MinecraftMapScanChunk() %s, [%s, %s, %s]", InID, InOffsetX, InOffsetY, InOffsetZ))
+	MinecraftChunkToSend_InProgress = { --[[ID = InID, ]]points = {} }
 	local OccludedCoords = {}
-	local BoundsStart = Vector(-MapChunkSize + InOffsetX * MapChunkSize, -MapChunkSize + InOffsetY * MapChunkSize, -MapChunkSize + InOffsetZ * MapChunkSize)
-	local BoundsEnd = Vector(MapChunkSize + InOffsetX * MapChunkSize, MapChunkSize + InOffsetY * MapChunkSize, MapChunkSize + InOffsetZ * MapChunkSize)
+	local BoundsStart = Vector(-MapChunkHalfSize + InOffsetX * MapChunkHalfSize, -MapChunkHalfSize + InOffsetY * MapChunkHalfSize, -MapChunkHalfSize + InOffsetZ * MapChunkHalfSize)
+	local BoundsEnd = Vector(MapChunkHalfSize + InOffsetX * MapChunkHalfSize, MapChunkHalfSize + InOffsetY * MapChunkHalfSize, MapChunkHalfSize + InOffsetZ * MapChunkHalfSize)
 
 	--MsgN(BoundsStart, BoundsEnd)
 
@@ -211,13 +229,25 @@ function MinecraftMapScanChunk(InID, InOffsetX, InOffsetY, InOffsetZ)
 		return
 	end--]]
 
+	local StartTime = SysTime()
+
 	for x = BoundsStart.x, BoundsEnd.x do
 		for y = BoundsStart.y, BoundsEnd.y do
 			for z = BoundsStart.z, BoundsEnd.z do
 				MinecraftMapTraceOnCoords(OccludedCoords, x, y, z)
 			end
 		end
+		timer.Create("MinecraftMapScanChunkPause", 0.012, 0, MinecraftMapScanChunkResume)
+		coroutine.yield()
 	end
+
+	timer.Remove("MinecraftMapScanChunkPause")
+
+	--MsgN("Finished traces for ", InID, timer.TimeLeft("MinecraftMapScanChunkPause"))
+
+	--local TraceTime = SysTime()
+	--MsgN("Trace time: ", TraceTime - StartTime)
+	
 	--PrintTable(OccludedCoords)
 	for x = BoundsStart.x, BoundsEnd.x do
 		for y = BoundsStart.y, BoundsEnd.y do
@@ -244,6 +274,7 @@ function MinecraftMapScanChunk(InID, InOffsetX, InOffsetY, InOffsetZ)
 			end
 		end
 	end
+	--MsgN("Optimisation time: ", SysTime() - TraceTime)	
 	--PrintTable(MinecraftChunkToSend_InProgress)
 end
 
