@@ -210,7 +210,7 @@ function MinecraftUpdate()
 	if MinecraftHasChunkToSend() then
 		OutTable.chunk = MinecraftConsumeMinecraftChunkToSend()
 		--MsgN(OutTable.chunk.ID)
-		--MsgN(OutTable.chunk.f)
+		--MsgN(OutTable.chunk.scanP)
 	end
 
 	OutTable.token = MinecraftBridgeToken
