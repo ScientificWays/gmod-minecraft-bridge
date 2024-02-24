@@ -245,7 +245,7 @@ hook.Add("PlayerSay", "MinecraftChatEvent", function(InPlayer, InText, bTeamChat
 			elseif CommandData[2] == "start" then
 				MinecraftStartBridge(CommandData[3])
 				return ""
-			elseif CommandData[2] == "stop" and MinecraftIsBridgeEnabled() then
+			elseif CommandData[2] == "stop" then
 				MinecraftStopBridge()
 				return ""
 			elseif CommandData[1] == "ip" then
