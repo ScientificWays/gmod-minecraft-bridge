@@ -69,7 +69,7 @@ function MinecraftSetBridgePort(InPort)
 	MinecraftUpdatePostURL()
 end
 
-function MinecraftToggleBridge(InRoomCode, InTickRate)
+function MinecraftToggleBridge(InRoomCode)
 
 	MsgN("MinecraftToggleBridge()")
 
@@ -81,12 +81,6 @@ function MinecraftToggleBridge(InRoomCode, InTickRate)
 
 		timer.Remove("MinecraftUpdate")
 		MinecraftDisconnect()
-
-		for SampleUUID, SampleEntity in pairs(GetUUIDEntityList()) do
-			if SampleEntity.bMinecraftEntity then
-				RemoveMinecraftEntity(SampleUUID)
-			end
-		end
 
 		for SampleIndex, SamplePlayer in ipairs(player.GetAll()) do
 			SamplePlayer:Spawn()
@@ -274,14 +268,24 @@ function MinecraftOnUpdateFailure(InError)
 	end
 end
 
+hook.Add("ShutDown", "MinecraftShutDown", function()
+	--MsgN("MinecraftShutDown()")
+	if MinecraftIsBridgeEnabled() then
+		MinecraftDisconnect()
+	end
+end)
+
 function MinecraftDisconnect()
+
+	RemoveAllUUIDEntities()
+
 	local OutRequest = {
-		url			= MinecraftPostHandshake,
+		url			= MinecraftPostDisconnect,
 		method		= "post",
 		body		= { token = MinecraftBridgeToken },
 		type		= "application/json",
-		success		= MinecraftOnHandshakeSuccess,
-		failed		= MinecraftOnHandshakeFailure
+		success		= MinecraftOnDisconnectSuccess,
+		failed		= MinecraftOnDisconnectFailure
 	}
 	HTTP(OutRequest)
 end

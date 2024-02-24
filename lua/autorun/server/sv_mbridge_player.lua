@@ -240,7 +240,7 @@ hook.Add("PlayerSay", "MinecraftChatEvent", function(InPlayer, InText, bTeamChat
 		if CommandData[1] == "/bridge" or CommandData[1] == "/mb" then
 
 			if CommandData[2] == "toggle" then
-				MinecraftToggleBridge(CommandData[3], CommandData[4])
+				MinecraftToggleBridge(CommandData[3])
 				return ""
 			elseif CommandData[1] == "ip" then
 				MinecraftSetBridgeIP(CommandData[3])

@@ -254,7 +254,7 @@ function MinecraftMapScanChunk(InID, InOffsetX, InOffsetY, InOffsetZ)
 	timer.Remove("MinecraftMapScanChunkPause")
 
 	local BoundsCenterLocation = BoundsCenter * GetMinecraftBlockSize() + GetMinecraftBlockCenterOffset()
-	debugoverlay.Box(BoundsCenterLocation, MapChunkSizeUnitsMin, MapChunkSizeUnitsMax, 1.0)
+	debugoverlay.Box(BoundsCenterLocation, MapChunkSizeUnitsMin, MapChunkSizeUnitsMax, 1.0, Color(255, 255, 255, 50))
 
 	--MsgN("Finished traces for ", InID, timer.TimeLeft("MinecraftMapScanChunkPause"))
 
@@ -357,7 +357,7 @@ function MinecraftMapTraceOnCoords(InTable, x, y, z)
 		--MsgN(Format("HitTexture: %s", TraceResult.HitTexture))
 
 		if InTable[x][y][z] > 0 then
-			--debugoverlay.Box(TraceEnd, Vector(0.5, 0.5, 0.5) * -GetMinecraftBlockSize(), Vector(0.5, 0.5, 0.5) * GetMinecraftBlockSize(), 15.0)
+			debugoverlay.Box(TraceEnd, Vector(0.5, 0.5, 0.5) * -GetMinecraftBlockSize(), Vector(0.5, 0.5, 0.5) * GetMinecraftBlockSize(), 1.0)
 		end
 	end
 end

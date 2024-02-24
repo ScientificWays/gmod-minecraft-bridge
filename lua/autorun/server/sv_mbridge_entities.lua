@@ -413,6 +413,15 @@ function MinecraftUpdateEntity(InEntityData)
 	--MsgN(MinecraftEntity.bCrouching)
 end
 
+function RemoveAllUUIDEntities()
+	
+	for SampleUUID, SampleEntity in pairs(UUIDEntityList) do
+		if SampleEntity.bMinecraftEntity then
+			RemoveMinecraftEntity(SampleUUID)
+		end
+	end
+end
+
 function RemoveMinecraftEntity(InUUID)
 
 	--MsgN("RemoveMinecraftEntity()")
