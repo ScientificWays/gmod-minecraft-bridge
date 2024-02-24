@@ -73,27 +73,37 @@ function MinecraftToggleBridge(InRoomCode)
 
 	MsgN("MinecraftToggleBridge()")
 
+	if MinecraftIsBridgeEnabled() then MinecraftStopBridge()
+	else MinecraftStartBridge(InRoomCode) end
+end
+
+function MinecraftStartBridge(InRoomCode)
+
+	if MinecraftIsBridgeEnabled() then return end
+	MinecraftClearSendEventList()
+	
+	MinecraftBridgeRoomCode = InRoomCode
+	MinecraftHandshake()
+end
+
+function MinecraftStopBridge()
+
+	if not MinecraftIsBridgeEnabled() then return end
 	MinecraftClearSendEventList()
 
-	if MinecraftIsBridgeEnabled() then
+	MinecraftSetBridgeEnabled(false)
 
-		MinecraftSetBridgeEnabled(false)
+	timer.Remove("MinecraftUpdate")
+	MinecraftDisconnect()
 
-		timer.Remove("MinecraftUpdate")
-		MinecraftDisconnect()
-
-		for SampleIndex, SamplePlayer in ipairs(player.GetAll()) do
-			SamplePlayer:Spawn()
-		end
-
-		hook.Remove("SetupMove", "MinecraftUpdateMove")
-		hook.Remove("StartCommand", "MinecraftCommand")
-
-		PrintMessage(HUD_PRINTTALK, "Minecraft bridge disabled!")
-	else
-		MinecraftBridgeRoomCode = InRoomCode
-		MinecraftHandshake()
+	for SampleIndex, SamplePlayer in ipairs(player.GetAll()) do
+		SamplePlayer:Spawn()
 	end
+
+	hook.Remove("SetupMove", "MinecraftUpdateMove")
+	hook.Remove("StartCommand", "MinecraftCommand")
+
+	PrintMessage(HUD_PRINTTALK, "Minecraft bridge disabled!")
 end
 
 function MinecraftHandshake()
@@ -279,10 +289,13 @@ function MinecraftDisconnect()
 
 	RemoveAllUUIDEntities()
 
+	local OutJSON = util.TableToJSON({ token = MinecraftBridgeToken })
+	--print(OutJSON)
+
 	local OutRequest = {
 		url			= MinecraftPostDisconnect,
 		method		= "post",
-		body		= { token = MinecraftBridgeToken },
+		body		= OutJSON,
 		type		= "application/json",
 		success		= MinecraftOnDisconnectSuccess,
 		failed		= MinecraftOnDisconnectFailure
